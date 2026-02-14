@@ -68,6 +68,7 @@ import {
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { SessionList } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
+import { CanvasPanel } from "./CanvasPanel"
 import type { ChatDisplayHandle } from "./ChatDisplay"
 import { LeftSidebar } from "./LeftSidebar"
 import { useSession } from "@/hooks/useSession"
@@ -494,9 +495,9 @@ function AppShellContent({
   const [sidebarWidth, setSidebarWidth] = React.useState(() => {
     return storage.get(storage.KEYS.sidebarWidth, 220)
   })
-  // Session list width in pixels (min 240, max 480)
+  // Left column width in pixels (session list + chat stacked) (min 360, max 560)
   const [sessionListWidth, setSessionListWidth] = React.useState(() => {
-    return storage.get(storage.KEYS.sessionListWidth, 300)
+    return storage.get(storage.KEYS.sessionListWidth, 420)
   })
 
   // Right sidebar state (min 280, max 480)
@@ -1138,7 +1139,7 @@ function AppShellContent({
         }
       } else if (isResizing === 'session-list') {
         const offset = isSidebarVisible ? sidebarWidth : 0
-        const newWidth = Math.min(Math.max(e.clientX - offset, 240), 480)
+        const newWidth = Math.min(Math.max(e.clientX - offset, 360), 560)
         setSessionListWidth(newWidth)
         if (sessionListHandleRef.current) {
           const rect = sessionListHandleRef.current.getBoundingClientRect()
@@ -2379,15 +2380,12 @@ function AppShellContent({
         )}
 
         {/* === MAIN CONTENT (Right) ===
-            Flex layout: Session List | Chat Display */}
+            Flex layout: [Session List + Chat stacked] | Canvas */}
         <div
           className="flex-1 overflow-hidden min-w-0 flex h-full"
           style={{ padding: PANEL_WINDOW_EDGE_SPACING, gap: PANEL_PANEL_SPACING / 2 }}
         >
-          {/* === SESSION LIST PANEL ===
-              Animated width with spring physics for smooth 60-120fps transitions.
-              Outer motion.div animates width (clipping mask), inner div maintains fixed width
-              so content doesn't reflow during animation - same pattern as left sidebar. */}
+          {/* === LEFT COLUMN: Session List (top) + Chat (bottom) === */}
           <motion.div
             initial={false}
             animate={{
@@ -2395,8 +2393,11 @@ function AppShellContent({
               opacity: effectiveFocusMode ? 0 : 1,
             }}
             transition={isResizing ? { duration: 0 } : springTransition}
-            className="h-full shrink-0 overflow-hidden bg-background shadow-middle rounded-l-[14px] rounded-r-[10px]"
+            className="h-full shrink-0 overflow-hidden flex flex-col"
+            style={{ gap: PANEL_PANEL_SPACING / 2 }}
           >
+          {/* === SESSION LIST (top section, ~3-4 items visible) === */}
+          <div className="shrink-0 overflow-hidden bg-background shadow-middle rounded-l-[14px] rounded-r-[10px]" style={{ maxHeight: 280 }}>
             <div
               style={{ width: sessionListWidth }}
               className="h-full flex flex-col min-w-0 titlebar-no-drag relative z-panel"
@@ -3048,132 +3049,19 @@ function AppShellContent({
               </>
             )}
             </div>
-          </motion.div>
-
-          {/* Session List Resize Handle (hidden in focused mode) */}
-          {!effectiveFocusMode && (
-          <div
-            ref={sessionListHandleRef}
-            onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}
-            onMouseMove={(e) => {
-              if (sessionListHandleRef.current) {
-                const rect = sessionListHandleRef.current.getBoundingClientRect()
-                setSessionListHandleY(e.clientY - rect.top)
-              }
-            }}
-            onMouseLeave={() => { if (isResizing !== 'session-list') setSessionListHandleY(null) }}
-            className="relative w-0 h-full cursor-col-resize flex justify-center shrink-0"
-          >
-            {/* Touch area */}
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5 flex justify-center cursor-col-resize">
-              <div
-                className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5"
-                style={getResizeGradientStyle(sessionListHandleY)}
-              />
-            </div>
           </div>
-          )}
-
-          {/* === MAIN CONTENT PANEL === */}
+          {/* === CHAT PANEL (bottom section, takes remaining space) === */}
           <div className={cn(
-            "flex-1 overflow-hidden min-w-0 bg-foreground-2 shadow-middle",
-            effectiveFocusMode ? "rounded-l-[14px]" : "rounded-l-[10px]",
-            isRightSidebarVisible ? "rounded-r-[10px]" : "rounded-r-[14px]"
+            "flex-1 overflow-hidden min-w-0 bg-foreground-2 shadow-middle rounded-[10px]",
           )}>
             <MainContentPanel isFocusedMode={effectiveFocusMode} />
           </div>
+          </motion.div>
 
-          {/* Right Sidebar - Inline Mode (≥ 920px) */}
-          {!shouldUseOverlay && (
-            <>
-              {/* Resize Handle */}
-              {isRightSidebarVisible && (
-                <div
-                  ref={rightSidebarHandleRef}
-                  onMouseDown={(e) => { e.preventDefault(); setIsResizing('right-sidebar') }}
-                  onMouseMove={(e) => {
-                    if (rightSidebarHandleRef.current) {
-                      const rect = rightSidebarHandleRef.current.getBoundingClientRect()
-                      setRightSidebarHandleY(e.clientY - rect.top)
-                    }
-                  }}
-                  onMouseLeave={() => { if (isResizing !== 'right-sidebar') setRightSidebarHandleY(null) }}
-                  className="relative w-0 h-full cursor-col-resize flex justify-center shrink-0"
-                >
-                  {/* Touch area */}
-                  <div className="absolute inset-y-0 -left-1.5 -right-1.5 flex justify-center cursor-col-resize">
-                    <div
-                      className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-0.5"
-                      style={getResizeGradientStyle(rightSidebarHandleY)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Inline Sidebar */}
-              <motion.div
-                initial={false}
-                animate={{
-                  width: isRightSidebarVisible ? rightSidebarWidth : 0,
-                  marginLeft: isRightSidebarVisible ? 0 : -PANEL_PANEL_SPACING / 2,
-                }}
-                transition={isResizing === 'right-sidebar' || skipRightSidebarAnimation ? { duration: 0 } : springTransition}
-                className="h-full shrink-0 overflow-visible"
-              >
-                <motion.div
-                  initial={false}
-                  animate={{
-                    x: isRightSidebarVisible ? 0 : rightSidebarWidth + PANEL_PANEL_SPACING / 2,
-                    opacity: isRightSidebarVisible ? 1 : 0,
-                  }}
-                  transition={isResizing === 'right-sidebar' || skipRightSidebarAnimation ? { duration: 0 } : springTransition}
-                  className="h-full bg-foreground-2 shadow-middle rounded-l-[10px] rounded-r-[14px]"
-                  style={{ width: rightSidebarWidth }}
-                >
-                  <RightSidebar
-                    panel={{ type: 'sessionMetadata' }}
-                    sessionId={isSessionsNavigation(navState) && navState.details ? navState.details.sessionId : undefined}
-                    closeButton={rightSidebarCloseButton}
-                  />
-                </motion.div>
-              </motion.div>
-            </>
-          )}
-
-          {/* Right Sidebar - Overlay Mode (< 920px) */}
-          {shouldUseOverlay && (
-            <AnimatePresence>
-              {isRightSidebarVisible && (
-                <>
-                  {/* Backdrop */}
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={skipRightSidebarAnimation ? { duration: 0 } : { duration: 0.2 }}
-                    className="fixed inset-0 bg-black/25 z-overlay"
-                    onClick={() => setIsRightSidebarVisible(false)}
-                  />
-                  {/* Drawer panel */}
-                  <motion.div
-                    initial={{ x: 316 }}
-                    animate={{ x: 0 }}
-                    exit={{ x: 316 }}
-                    transition={skipRightSidebarAnimation ? { duration: 0 } : springTransition}
-                    className="fixed inset-y-0 right-0 w-[316px] h-screen z-overlay p-1.5"
-                  >
-                    <div className="h-full bg-foreground-2 overflow-hidden shadow-strong rounded-[12px]">
-                      <RightSidebar
-                        panel={{ type: 'sessionMetadata' }}
-                        sessionId={isSessionsNavigation(navState) && navState.details ? navState.details.sessionId : undefined}
-                        closeButton={rightSidebarCloseButton}
-                      />
-                    </div>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
-          )}
+          {/* === CANVAS PANEL (right, takes remaining space) === */}
+          <div className="flex-1 overflow-hidden min-w-0 bg-foreground-2 shadow-middle rounded-l-[10px] rounded-r-[14px]">
+            <CanvasPanel />
+          </div>
         </div>
       </div>
 
